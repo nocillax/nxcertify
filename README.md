@@ -1,144 +1,203 @@
-# NXCertify - Blockchain Certificate Management System
+# NXCertify
 
-Decentralized academic certificate issuance and verification platform using Ethereum blockchain with cryptographic wallet authentication.
+NXCertify is a thesis project for issuing and verifying academic certificates on a local Ethereum (GoQuorum) network using wallet-based authentication.
 
-## Overview
+## What this repository contains
 
-**NXCertify** is a blockchain-based certificate management system that eliminates centralized trust by storing certificate records on an immutable blockchain. Users authenticate using cryptographic wallet signatures instead of passwords, and all certificate operations are permanently recorded on-chain for transparency and verification.
+- `blockchain/`: smart contracts and deployment scripts
+- `backend/`: NestJS server
+- `frontend/`: Next.js application
+- `quorum-test-network/`: local GoQuorum network
 
-### Use Cases
+## Prerequisites
 
-- **Universities**: Issue tamper-proof digital academic certificates
-- **Employers**: Instantly verify candidate credentials without contacting institutions
-- **Students**: Own and share verifiable certificates without intermediaries
-- **Government**: Audit academic credential issuance transparently
+Install these before starting:
 
-### Tech Stack
-
-**Frontend**: Next.js 14, TypeScript, TailwindCSS, shadcn/ui, TanStack Query, Zustand, ethers.js  
-**Backend**: NestJS, TypeScript, ethers.js  
-**Blockchain**: Ethereum (Quorum), Solidity smart contracts, IBFT 2.0 consensus  
-**Authentication**: Wallet signatures (no passwords), JWT tokens
-
----
-
-## Quick Start
-
-### Prerequisites
-
-- Node.js >= 18
-- Docker & Docker Compose
 - Git
+- Node.js 18+ and npm
+- Docker Desktop (with Docker Compose)
+- Rabby Wallet browser extension
 
-### 1. Start Quorum Blockchain Network
+No global NestJS/Next.js installation is required (the project uses local package scripts).
+
+## Installation and setup (single flow)
+
+### 1. Clone repository
+
+```bash
+git clone https://github.com/<your-username>/<your-repo>.git
+cd nxcertify
+```
+
+### 2. Install project dependencies
+
+```bash
+cd blockchain && npm install
+cd ../backend && npm install
+cd ../frontend && npm install
+cd ..
+```
+
+### 3. Install GoQuorum network (first time only)
+
+If `quorum-test-network/` is already in this repo, skip to Step 4.
+
+```bash
+npx quorum-dev-quickstart
+```
+
+When prompted, use:
+
+- Client: `GoQuorum`
+- Private transactions: press `Enter` (skip Tessera)
+- Logging: press `Enter` (default)
+- Chainlens monitoring: `N`
+- Blockscout explorer: `N`
+- Directory: press `Enter` (default `./quorum-test-network`)
+
+### 4. Start GoQuorum
 
 ```bash
 cd quorum-test-network
 ./run.sh
-
-# Wait 30 seconds for initialization
-# Verify: docker ps should show 4 running nodes
+cd ..
 ```
 
-### 2. Deploy Smart Contracts & Seed Admin
+Expected blockchain endpoint:
+
+- RPC URL: `http://localhost:8545`
+- Chain ID: `1337`
+
+### 5. Deploy contracts and seed admin account
 
 ```bash
 cd blockchain
-npm install
-npx hardhat run scripts/seed-admin.js --network quorum
-
-# Copy contract addresses from output
+npx hardhat run scripts/deploy-dev.js --network quorum
+cd ..
 ```
 
-### 3. Start Backend
+From command output, copy these values:
+
+- `USER_REGISTRY_ADDRESS`
+- `CONTRACT_ADDRESS`
+- `ADMIN_WALLET_ADDRESS`
+- `PRIVATE_KEY`
+
+### 6. Configure backend and start required Docker services
+
+Create backend environment file:
 
 ```bash
 cd backend
-npm install
 cp .env.example .env
-
-# Edit .env and paste contract addresses
-npm run start:dev
-
-# Backend running at http://localhost:3001
 ```
 
-### 4. Start Frontend
+Update `.env` with the values from Step 5 (especially the four keys above).
+
+Start backend support services with Docker Compose:
+
+```bash
+docker compose up -d
+```
+
+Then start backend server:
+
+```bash
+npm run start:dev
+```
+
+Backend runs on:
+
+- `http://localhost:3001`
+
+### 7. Configure frontend
+
+Open a new terminal:
 
 ```bash
 cd frontend
-npm install
 cp .env.local.example .env.local
+```
 
-# Edit .env.local with backend URL
+Set or verify these values in `.env.local`:
+
+- `NEXT_PUBLIC_API_URL=http://localhost:3001`
+- `NEXT_PUBLIC_BLOCKCHAIN_NETWORK=quorum`
+- `NEXT_PUBLIC_USER_REGISTRY_ADDRESS=<from step 5>`
+- `NEXT_PUBLIC_CONTRACT_ADDRESS=<from step 5>`
+- `NEXT_PUBLIC_ADMIN_WALLET_ADDRESS=<from step 5>`
+
+Run frontend:
+
+```bash
 npm run dev
-
-# Frontend running at http://localhost:3000
 ```
 
-### 5. Login as Admin
+Frontend runs on:
 
-**Default Admin Wallet**: `0xFE3B557E8Fb62b89F4916B721be55cEb828dBd73`  
-**Private Key**: Get from `seed-admin.js` output
+- `http://localhost:3000`
 
-1. Import private key to MetaMask/Rabby wallet
-2. Go to http://localhost:3000/login
-3. Connect wallet and sign login message
+### 8. Rabby Wallet setup (required)
 
----
+1. Install Rabby extension from Chrome Web Store.
+2. Open Rabby and choose **I already have an address**.
+3. Choose **Private Key**.
+4. Paste `PRIVATE_KEY` from Step 5 (or from backend `.env`).
+5. Complete wallet import.
+6. Add custom network in Rabby:
+   - Network Name: `Quorum Local`
+   - RPC URL: `http://localhost:8545`
+   - Chain ID: `1337`
+   - Currency Symbol: `ETH`
+7. Switch Rabby to this network and imported admin account.
 
-## Project Structure
+### 9. Run the app
 
-```
-proposed/
-├── blockchain/          # Smart contracts & deployment scripts
-├── backend/            # NestJS API server
-├── frontend/           # Next.js web application
-├── quorum-test-network/ # Ethereum blockchain network
-└── TESTING_GUIDE.md    # Complete API documentation
-```
+- Open `http://localhost:3000/login`
+- Connect Rabby
+- Sign the login message
+- You should be able to access the dashboard and test certificate flows
 
----
+## Quick troubleshooting
 
-## Key Features
+- Blockchain not reachable: restart network from `quorum-test-network/` using `./stop.sh` then `./run.sh`
+- Login/signature issues: confirm Rabby is on Chain ID `1337` and using the imported admin account
+- Frontend cannot call backend: confirm backend is running on port `3001` and `NEXT_PUBLIC_API_URL` is `http://localhost:3001`
 
-- **No Passwords**: Cryptographic wallet signature authentication
-- **No Database**: User data stored on blockchain (username, email, roles)
-- **Immutable Records**: Certificates cannot be altered after issuance
-- **Version Control**: Track certificate revisions per student
-- **Public Verification**: Anyone can verify certificates without authentication
-- **Role-Based Access**: Admin and regular user permissions enforced on-chain
-- **Audit Trail**: Complete blockchain history of all certificate actions
+## Screenshots
 
----
+### Public flow
 
-## Documentation
+**Login** - Wallet connection page for secure sign-in.
 
-- [Backend Setup](./backend/README.md) - Detailed backend installation
-- [Frontend Setup](./frontend/README.md) - Detailed frontend installation
-- [API Documentation](./TESTING_GUIDE.md) - Complete API reference with examples
+![Login](docs/login.png)
 
----
+**Verify certificate (valid)** - Public verification result for a valid certificate.
 
-## Troubleshooting
+![Valid certificate verification](docs/valid-certificate-verify.png)
 
-**Blockchain not responding:**
+**Verify certificate (revoked/invalid)** - Verification result when a certificate is revoked.
 
-```bash
-cd quorum-test-network
-./stop.sh && ./run.sh
-```
+![Invalid certificate verification](docs/invalid-certificate-verify.png)
 
-**Backend connection error:**
+### Admin flow
 
-```bash
-# Verify contract addresses in backend/.env
-# Check Quorum running: curl http://localhost:8545
-```
+**Admin dashboard** - System overview with quick actions and activity summaries.
 
-**Frontend wallet connection fails:**
+![Admin dashboard](docs/admin-dashboard.png)
 
-```bash
-# Install MetaMask/Rabby wallet extension
-# Add custom network: RPC http://localhost:8545, Chain ID 1337
-```
+**Issue certificate** - Form used to create and issue a new certificate.
+
+![Issue certificate](docs/issue-certificate.png)
+
+**Certificate details** - Full certificate view with metadata and blockchain data.
+
+![Certificate details](docs/certificate-details.png)
+
+**Certificate logs** - System-wide certificate activity history.
+
+![Certificate logs](docs/certificate-logs.png)
+
+**User management** - Admin panel for authorized users and account control.
+
+![User management](docs/user-managemt.png)
