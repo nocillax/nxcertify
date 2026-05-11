@@ -1,6 +1,6 @@
 # NXCertify
 
-NXCertify is a thesis project for issuing and verifying academic certificates on a local Ethereum (GoQuorum) network using wallet-based authentication.
+NXCertify is a project for issuing and verifying academic certificates on a local Ethereum (GoQuorum) network using wallet-based authentication.
 
 ## What this repository contains
 
