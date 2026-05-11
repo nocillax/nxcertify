@@ -1,0 +1,390 @@
+import {
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+  HttpException,
+  Request,
+  Res,
+  StreamableFile,
+} from '@nestjs/common';
+import type { Response } from 'express';
+import { AuthGuard } from '@nestjs/passport';
+import { RolesGuard } from '../auth/roles.guard';
+import { AuthorizedGuard } from '../auth/authorized.guard';
+import { BlockchainService } from './blockchain.service';
+import { PdfService } from './services/pdf.service';
+import {
+  IssueCertificateDto,
+  VerifyCertificateDto,
+  UpdateCertificateDto,
+  RevokeCertificateDto,
+} from './dto/certificate.dto';
+import { RegisterUserDto } from './dto/user.dto';
+
+@Controller('api/blockchain')
+export class BlockchainController {
+  constructor(
+    private blockchainService: BlockchainService,
+    private pdfService: PdfService,
+  ) {}
+
+  // ========== USER MANAGEMENT ENDPOINTS ==========
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('users/me')
+  async getMyProfile(@Request() req) {
+    return this.blockchainService.getUserByWalletAddress(
+      req.user.walletAddress,
+    );
+  }
+
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Post('users/register')
+  async registerUser(@Body() dto: RegisterUserDto) {
+    return this.blockchainService.registerNewUser(
+      dto.username,
+      dto.email,
+      dto.is_admin || false,
+    );
+  }
+
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Get('users')
+  async getAllUsers(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('status') status?: 'authorized' | 'revoked',
+    @Query('is_admin') is_admin?: string,
+    @Query('hide_revoked') hide_revoked?: string,
+  ) {
+    const allUsers = await this.blockchainService.getAllUsersFromBlockchain();
+
+    // Apply filters
+    let filtered = allUsers;
+
+    // Filter by authorization status
+    if (status === 'authorized') {
+      filtered = filtered.filter((u) => u.is_authorized);
+    } else if (status === 'revoked') {
+      filtered = filtered.filter((u) => !u.is_authorized);
+    }
+
+    // Filter by admin role
+    if (is_admin === 'true') {
+      filtered = filtered.filter((u) => u.is_admin);
+    } else if (is_admin === 'false') {
+      filtered = filtered.filter((u) => !u.is_admin);
+    }
+
+    // Hide revoked users
+    if (hide_revoked === 'true') {
+      filtered = filtered.filter((u) => u.is_authorized);
+    }
+
+    // Return all if no pagination params
+    if (!page || !limit) {
+      return filtered;
+    }
+
+    // Pagination
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 20;
+    const start = (pageNum - 1) * limitNum;
+    const end = start + limitNum;
+    const paginatedData = filtered.slice(start, end);
+
+    return {
+      data: paginatedData,
+      meta: {
+        current_page: pageNum,
+        total_pages: Math.ceil(filtered.length / limitNum),
+        total_count: filtered.length,
+        has_more: end < filtered.length,
+      },
+    };
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('users/:wallet_address')
+  async getUserByWalletAddress(
+    @Param('wallet_address') wallet_address: string,
+  ) {
+    return this.blockchainService.getUserByWalletAddress(wallet_address);
+  }
+
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Patch('users/:wallet_address/revoke')
+  async revokeUser(@Param('wallet_address') wallet_address: string) {
+    await this.blockchainService.revokeUserOnBlockchain(wallet_address);
+    return {
+      success: true,
+      message: 'User authorization revoked',
+      wallet_address,
+    };
+  }
+
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Patch('users/:wallet_address/reactivate')
+  async reactivateUser(@Param('wallet_address') wallet_address: string) {
+    await this.blockchainService.reactivateUserOnBlockchain(wallet_address);
+    return {
+      success: true,
+      message: 'User authorization restored',
+      wallet_address,
+    };
+  }
+
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Patch('users/:wallet_address/grant-admin')
+  async grantAdmin(@Param('wallet_address') wallet_address: string) {
+    await this.blockchainService.grantAdminToUser(wallet_address);
+    return {
+      success: true,
+      message: 'Admin privileges granted',
+      wallet_address,
+    };
+  }
+
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Patch('users/:wallet_address/revoke-admin')
+  async revokeAdmin(@Param('wallet_address') wallet_address: string) {
+    await this.blockchainService.revokeAdminFromUser(wallet_address);
+    return {
+      success: true,
+      message: 'Admin privileges revoked',
+      wallet_address,
+    };
+  }
+
+  // ========== CERTIFICATE ENDPOINTS ==========
+
+  @UseGuards(AuthGuard('jwt'), AuthorizedGuard)
+  @Post('certificates')
+  async issueCertificate(@Body() dto: IssueCertificateDto, @Request() req) {
+    return this.blockchainService.issueCertificate(
+      dto.student_id,
+      dto.student_name,
+      dto.degree,
+      dto.program,
+      dto.cgpa,
+      dto.issuing_authority,
+      req.user.username,
+      req.user.walletAddress,
+    );
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('certificates')
+  async getAllCertificates(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('status') status?: 'active' | 'revoked',
+    @Query('hide_revoked') hide_revoked?: string,
+  ) {
+    const allCerts = await this.blockchainService.getAllCertificates();
+
+    // Apply filters
+    let filtered = allCerts;
+
+    // Filter by status
+    if (status === 'active') {
+      filtered = filtered.filter((c) => !c.is_revoked);
+    } else if (status === 'revoked') {
+      filtered = filtered.filter((c) => c.is_revoked);
+    }
+
+    // Hide revoked certificates
+    if (hide_revoked === 'true') {
+      filtered = filtered.filter((c) => !c.is_revoked);
+    }
+
+    // Return all if no pagination params
+    if (!page || !limit) {
+      return filtered;
+    }
+
+    // Pagination
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 20;
+    const start = (pageNum - 1) * limitNum;
+    const end = start + limitNum;
+    const paginatedData = filtered.slice(start, end);
+
+    return {
+      data: paginatedData,
+      meta: {
+        current_page: pageNum,
+        total_pages: Math.ceil(filtered.length / limitNum),
+        total_count: filtered.length,
+        has_more: end < filtered.length,
+      },
+    };
+  }
+
+  // Enhanced search endpoint - searches student IDs, cert hashes, and wallet addresses
+  @UseGuards(AuthGuard('jwt'))
+  @Get('search')
+  async enhancedSearch(@Query('q') query: string) {
+    return this.blockchainService.enhancedSearch(query);
+  }
+
+  // PDF routes must come before :cert_hash routes
+  @Get('certificates/:cert_hash/download')
+  async downloadCertificate(
+    @Param('cert_hash') cert_hash: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const certificate =
+      await this.blockchainService.verifyCertificate(cert_hash);
+    const pdfBuffer = await this.pdfService.generateCertificatePdf({
+      ...certificate,
+      cert_hash,
+    });
+
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="certificate-${certificate.student_id}-v${certificate.version}.pdf"`,
+    });
+
+    return new StreamableFile(pdfBuffer);
+  }
+
+  @Get('certificates/:cert_hash/preview')
+  async previewCertificate(
+    @Param('cert_hash') cert_hash: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const certificate =
+      await this.blockchainService.verifyCertificate(cert_hash);
+    const pngBuffer = await this.pdfService.generateCertificatePng({
+      ...certificate,
+      cert_hash,
+    });
+
+    res.set({
+      'Content-Type': 'image/png',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
+    });
+
+    return new StreamableFile(pngBuffer);
+  }
+
+  @Get('certificates/verify/:cert_hash')
+  async verifyCertificate(@Param('cert_hash') cert_hash: string) {
+    return this.blockchainService.verifyCertificate(cert_hash);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('certificates/student/:student_id/active')
+  async getActiveCertificate(@Param('student_id') student_id: string) {
+    return this.blockchainService.getActiveCertificateByStudentId(student_id);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('certificates/student/:student_id/versions')
+  async getAllVersions(@Param('student_id') student_id: string) {
+    return this.blockchainService.getAllVersionsByStudentId(student_id);
+  }
+
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Patch('certificates/:cert_hash/revoke')
+  async revokeCertificate(
+    @Param('cert_hash') cert_hash: string,
+    @Body() dto: RevokeCertificateDto,
+    @Request() req,
+  ) {
+    return this.blockchainService.revokeCertificate(
+      cert_hash,
+      req.user.walletAddress,
+      dto.reason,
+    );
+  }
+
+  // Public endpoint - revoke reason should be viewable during public verification
+  @Get('certificates/:cert_hash/revoke-reason')
+  async getRevokeReason(@Param('cert_hash') cert_hash: string) {
+    return this.blockchainService.getRevokeReason(cert_hash);
+  }
+
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Patch('certificates/:cert_hash/reactivate')
+  async reactivateCertificate(
+    @Param('cert_hash') cert_hash: string,
+    @Request() req,
+  ) {
+    return this.blockchainService.reactivateCertificate(
+      cert_hash,
+      req.user.walletAddress,
+    );
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('certificates/audit-logs')
+  async getAuditLogs(
+    @Query('cert_hash') cert_hash?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+    @Request() req?: any,
+  ) {
+    if (!cert_hash) {
+      // System-wide audit logs - admin only
+      const user = await this.blockchainService.getUserByWalletAddress(
+        req.user.walletAddress,
+      );
+      if (!user.is_admin) {
+        throw new HttpException('Admin access required', HttpStatus.FORBIDDEN);
+      }
+
+      // If time range provided, filter by time
+      if (start && end) {
+        const pageNum = page ? parseInt(page) : undefined;
+        const limitNum = limit ? parseInt(limit) : undefined;
+        return this.blockchainService.getAuditLogsByTimeRange(
+          new Date(start),
+          new Date(end),
+          pageNum,
+          limitNum,
+        );
+      }
+
+      // If no cert_hash, return all audit logs with pagination
+      const pageNum = page ? parseInt(page) : undefined;
+      const limitNum = limit ? parseInt(limit) : undefined;
+      return this.blockchainService.getAllAuditLogs(pageNum, limitNum);
+    }
+    return this.blockchainService.getAuditLogs(cert_hash);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('certificates/audit-logs/user/:wallet_address')
+  async getUserAuditLogs(
+    @Param('wallet_address') wallet_address: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = page ? parseInt(page) : undefined;
+    const limitNum = limit ? parseInt(limit) : undefined;
+    return this.blockchainService.getUserAuditLogs(
+      wallet_address,
+      pageNum,
+      limitNum,
+    );
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('stats')
+  async getStats(@Request() req) {
+    return this.blockchainService.getStats(req.user.walletAddress);
+  }
+}

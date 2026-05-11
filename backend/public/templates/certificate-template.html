@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Certificate Overlay</title>
+    <style>
+      /* 1. Page Setup */
+      @page {
+        size: A4 landscape;
+        margin: 0;
+      }
+
+      body {
+        margin: 0;
+        padding: 0;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        font-family: 'Times New Roman', Times, serif;
+      }
+
+      .page-container {
+        width: 297mm;
+        height: 209mm;
+        position: relative;
+        margin: 0 auto;
+        box-sizing: border-box;
+        overflow: hidden;
+
+        /* Background Image */
+        background-image: url('{{BACKGROUND_IMAGE}}');
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+      }
+
+      /* 2. Main Content Flow */
+      .content {
+        position: relative;
+        z-index: 10;
+        text-align: center;
+        height: 100%;
+        /* Use padding to push the first element (University Name) down 
+               instead of a large margin on the element itself */
+        padding-top: 230px;
+        box-sizing: border-box;
+      }
+
+      /* --- Typography & Elements --- */
+
+      .university-name {
+        font-family: 'Times New Roman', serif;
+        font-size: 24pt;
+        color: #d4af37; /* Gold */
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        /* Margin removed; handled by container padding */
+      }
+
+      .recipient-name {
+        font-style: italic;
+        font-size: 47pt;
+        color: #000;
+        padding-top: 100px;
+        display: inline-block;
+        min-width: 60%;
+        line-height: 1.1;
+      }
+
+      .body-text {
+        font-family: 'Georgia', serif;
+        font-size: 13pt;
+        color: #444;
+        max-width: 60%;
+        margin: 0 auto;
+        padding-top: 30px;
+        line-height: 1.6;
+      }
+
+      /* --- Footer Absolute Layer --- 
+           Using absolute positioning for the footer elements allows 
+           precise placement over the background image without 
+           affecting the flow of the main text.
+        */
+      .footer-layer {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 40mm; /* Defined footer height area */
+        pointer-events: none; /* Lets clicks pass through if needed */
+      }
+
+      /* 1. Issue Date (Bottom Center) */
+      .issue-date {
+        position: absolute;
+        bottom: 15mm;
+        left: 50%;
+        transform: translateX(-50%);
+        font-family: 'Georgia', serif;
+        font-size: 12pt;
+        color: #2c3e50;
+        font-weight: bold;
+      }
+
+      /* 2. QR Code (Positioned relative to bottom-right area) */
+      .qr-code-container {
+        position: absolute;
+        bottom: 35mm;
+        right: 152mm; /* Adjust this value to move QR left/right */
+        background: white;
+        padding: 2px;
+        border: 1px solid #d4af37;
+        display: flex;
+      }
+
+      .qr-code-container img {
+        width: 18mm;
+        height: 18mm;
+        display: block;
+      }
+
+      /* --- Watermark --- */
+      .watermark {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) rotate(-15deg);
+        font-size: 120px;
+        font-weight: 900;
+        color: rgba(231, 76, 60, 0.15);
+        pointer-events: none;
+        z-index: 30;
+        letter-spacing: 10px;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page-container">
+      <!-- Watermark -->
+      <div class="watermark">{{REVOKED_WATERMARK}}</div>
+
+      <!-- Main Flow Content -->
+      <div class="content">
+        <div class="university-name">{{ISSUING_AUTHORITY}}</div>
+
+        <div class="recipient-name">{{STUDENT_NAME}}</div>
+
+        <div class="body-text">
+          with ID: {{STUDENT_ID}} for successfully completing the requirements
+          for {{DEGREE}} in {{PROGRAM}} with a CGPA of {{CGPA}}.
+        </div>
+      </div>
+
+      <!-- Absolute Footer Layer -->
+      <div class="footer-layer">
+        <!-- QR Code -->
+        <div class="qr-code-container">
+          <img src="{{QR_CODE}}" alt="QR Code" />
+        </div>
+
+        <!-- Center Date -->
+        <div class="issue-date">Issued on: {{DATE_ISSUED}}</div>
+      </div>
+    </div>
+  </body>
+</html>
